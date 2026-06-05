@@ -10,8 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   
   <style>
-    /* Google Fonts: Inter & Noto Sans TC */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght=300;400;600;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght=300;400;600;800&family=Noto+Sans+TC:wght=400;500;700;900&display=swap');
     
     :root {
       --bg: #f5f8f6;
@@ -169,7 +168,7 @@
         </div>
       </div>
 
-      <!-- 景點順序清單（極致設計感與順序號碼） -->
+      <!-- 景點順序清單 -->
       <div class="flex-1 p-4">
         <h3 class="text-xs font-extrabold text-gray-400 tracking-wider uppercase mb-3 flex items-center gap-1.5">
           <span>🚩</span> 當日停靠景點順序
@@ -187,17 +186,7 @@
       <!-- 地圖容器 -->
       <div class="flex-1 relative w-full h-full">
         <div id="map"></div>
-        
-        <!-- 地圖左下角資訊疊加層 -->
-        <div class="absolute bottom-4 left-4 z-[1000] bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-gray-100 max-w-[calc(100%-32px)]">
-          <div class="flex items-center gap-2 mb-1">
-            <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping"></span>
-            <span class="text-xs font-extrabold text-gray-800" id="mapCount">載入中...</span>
-          </div>
-          <p class="text-[10px] text-gray-500 leading-normal">
-            路線已根據<strong class="text-emerald-700">時間順序排序</strong>。地圖上的數字標點與連線指引了當天各個景點的移動先後方向。
-          </p>
-        </div>
+        <!-- 已根據需求移除地圖左下角資訊疊加層，簡化地圖視覺 -->
       </div>
 
     </main>
@@ -300,7 +289,7 @@
             { name: "喜多院 & 成田山別院", area: "川越", category: "神社寺院", lat: 35.9197, lng: 139.4891, note: "喜多院參觀德川家光誕生間與栩栩如生的五百羅漢；隔壁別院可求交通安全。", time: "10:00 - 11:00" },
             { name: "熊野神社 & 蓮馨寺", area: "川越", category: "神社寺院", lat: 35.9184, lng: 139.4836, note: "熊野神社可體驗腳底健康步道，蓮馨寺可撫摸「撫佛」祈求無病息災。", time: "11:15 - 11:45" },
             { name: "大正浪漫夢通", area: "川越", category: "老街", lat: 35.9200, lng: 139.4835, note: "街道保存了昭和與大正時期的西式洋樓結構，氣氛幽雅。", time: "13:30 - 14:15" },
-            { name: "菓子屋橫丁", area: "川越", category: "美食", lat: 35.9234, lng: 139.4804, note: "滿滿古早童趣雜貨與柑仔店。必買巨大、超吸睛的「黑糖大棒（ふ菓子）」。", time: "14:15 - 15:00" },
+            { name: "菓子屋橫丁", area: "川越", category: "美食", lat: 35.9234, lng: 139.4804, note: "慢步充滿童玩氣氛的零食街道，體驗川越傳統生活。", time: "14:15 - 15:00" },
             { name: "時之鐘", area: "川越", category: "地標", lat: 35.9227, lng: 139.4828, note: "川越經典地標，每日 15:00 響鈴。在這裡合影並聆聽渾厚鐘聲。", time: "15:00" },
             { name: "藏造老街 (一番街)", area: "川越", category: "老街", lat: 35.9238, lng: 139.4828, note: "江戶風黑漆厚實防禦性建築群，是了解川越防火歷史的主要區域。", time: "15:15 - 16:30" },
             { name: "川越冰川神社", area: "川越", category: "神社寺院", lat: 35.9253, lng: 139.4891, note: "祈求緣分的古老神社。體驗「釣鯛魚神籤」，六月可見唯美風鈴裝飾。", time: "16:45 - 17:30" }
@@ -452,7 +441,7 @@
           { time: "18:30 ~", spot: "晚餐後回新宿飯店", note: "從 JR 日暮里站直達回新宿王子大飯店。" }
         ],
         "day-0626": [
-          { time: "08:00 - 10:15", spot: "築地場外市場", note: "享用大份量海鮮丼或現做玉子燒。建議 10:15 前離開，前往新橋。" },
+          { time: "08:00 - 10:15", spot: "築地場外市場", note: "享用大份量海鮮丼 or 現做玉子燒。建議 10:15 前離開。" },
           { time: "10:30 - 11:20", spot: "烏森神社", note: "位於新橋站旁巷弄，以繽紛的四色御朱印和鳥居聞名，求職與除厄運極佳。" },
           { time: "11:45 - 12:05", spot: "汐留日本電視台大時計", note: "抵達汐留日本電視台，觀看 12:00 的宮崎駿設計手工時鐘整點演出（約 3 分鐘）。" },
           { time: "12:15 - 12:45", spot: "前往淺草", note: "從「汐留站」搭乘都營大江戶線至「大門站」，轉淺草線直達「淺草站」。" },
@@ -641,12 +630,6 @@
       renderCards(places);
       renderTimeline();
       updateRouteLinks(places);
-      
-      let countText = `${places.length} 個行程停靠點`;
-      if (selectedDay.id === "day-0623" && showKamakuraFood) {
-        countText += ` + 4 個美食推薦點`;
-      }
-      $("mapCount").textContent = countText;
     }
 
     function categories() {
