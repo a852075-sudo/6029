@@ -1,0 +1,939 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pikmin東京進香團</title>
+  
+  <!-- Tailwind CSS & Leaflet CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <style>
+    /* Google Fonts: Inter & Noto Sans TC */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+    
+    :root {
+      --bg: #f5f8f6;
+      --ink: #111827;
+      --muted: #4b5563;
+      --panel: #ffffff;
+      --line: #e5e7eb;
+      --green: #10b981;
+      --green-dark: #065f46;
+      --gold: #f59e0b;
+      --blue: #3b82f6;
+      --indigo: #6366f1;
+      --shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+    }
+
+    body {
+      font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      background-color: var(--bg);
+      color: var(--ink);
+    }
+
+    /* Leaflet 地圖樣式優化 */
+    #map {
+      background-color: #cbd5e1;
+    }
+
+    /* 漸變流光虛線路徑動畫效果 */
+    .leaflet-interactive {
+      stroke-dasharray: 8, 12;
+      animation: dash 35s linear infinite;
+    }
+    @keyframes dash {
+      to {
+        stroke-dashoffset: -1000;
+      }
+    }
+
+    /* 定位點雷達呼吸特效 */
+    .user-marker-pulse {
+      width: 14px;
+      height: 14px;
+      background: var(--blue);
+      border-radius: 50%;
+      border: 3px solid #ffffff;
+      box-shadow: 0 0 0 10px rgba(59, 130, 246, 0.4);
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0px rgba(59, 130, 246, 0.7); }
+      70% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0); }
+      100% { box-shadow: 0 0 0 0px rgba(59, 130, 246, 0); }
+    }
+
+    /* 自訂捲軸樣式 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased">
+
+  <!-- 頂部導航列 -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-100 px-4 md:px-6 py-3 flex items-center justify-between shadow-sm">
+    <div class="flex items-center gap-3">
+      <div class="relative w-16 h-10 bg-[#dffad8] rounded-xl flex items-center justify-center border border-emerald-100 overflow-hidden shadow-inner">
+        <!-- 恢復原始的皮克敏圖片，並配置防破圖安全機制 -->
+        <img src="./assets/圖片/Screenshots/螢幕擷取畫面 2026-06-04 204124.png" alt="Pikmin" class="w-full h-full object-cover object-bottom" onerror="this.onerror=null; this.src='https://placehold.co/64x40/dffad8/065f46?text=Pikmin';" />
+      </div>
+      <div>
+        <h1 class="text-lg md:text-xl font-black text-gray-900 tracking-tight flex items-center gap-1.5">
+          Pikmin東京進香團
+        </h1>
+        <p class="text-[11px] text-gray-500 font-medium">精密時間軸與行動順序地圖對接系統</p>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center gap-1 text-xs font-bold bg-gray-50 text-emerald-700 px-3 py-1.5 rounded-full border border-gray-100" id="locationStatus">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        地圖定位啟用中
+      </span>
+    </div>
+  </header>
+
+  <!-- 日期導航切換鈕 -->
+  <nav class="bg-white border-b border-gray-100 shadow-sm sticky top-[65px] z-20" aria-label="日期與行程切換">
+    <div class="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-2 overflow-x-auto" id="dateTabs">
+      <!-- 由 JS 動態繪製與切換 -->
+    </div>
+  </nav>
+
+  <!-- 主內容版面 -->
+  <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden h-[calc(100vh-125px)] relative">
+    
+    <!-- 左側邊欄：景點與行程卡片清單 -->
+    <aside class="col-span-1 lg:col-span-4 bg-white border-r border-gray-100 flex flex-col h-full overflow-y-auto overflow-x-hidden">
+      
+      <!-- 今日大看板 -->
+      <div class="p-5 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-md relative overflow-hidden">
+        <div class="absolute -right-6 -bottom-6 w-32 h-32 bg-white/5 rounded-full blur-xl"></div>
+        <span class="text-[10px] font-extrabold uppercase tracking-widest text-emerald-200/90 bg-emerald-800/60 px-2.5 py-1 rounded-md">TODAY'S PLAN</span>
+        <h2 class="text-2xl font-extrabold mt-2.5 mb-1 text-white drop-shadow-sm" id="dayTitle">載入中...</h2>
+        <p class="text-xs text-emerald-100/95 font-medium leading-relaxed" id="dayMeta"></p>
+      </div>
+
+      <!-- 地圖路線導航主控台 -->
+      <div class="p-4 border-b border-gray-50 bg-gray-50/50">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-extrabold text-gray-400 tracking-wider uppercase">路線功能</h3>
+          <button id="locateBtn" class="p-2 bg-white border border-gray-200 text-gray-700 hover:text-emerald-600 rounded-lg hover:shadow-sm transition-all text-xs flex items-center gap-1.5 font-bold" title="重新定位">
+            <span>⌖</span> 重定位
+          </button>
+        </div>
+
+        <div class="space-y-2.5">
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400">🔍</span>
+            <input id="searchInput" type="search" class="w-full text-sm pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-inner" placeholder="搜尋今日景點、美食、地鐵..." />
+          </div>
+
+          <!-- 地圖過濾標籤 -->
+          <div class="flex flex-wrap gap-1.5" id="categoryFilters"></div>
+        </div>
+
+        <!-- 鎌倉特殊美食功能(隱藏預設，6/23 顯示) -->
+        <div id="kamakuraFoodPanel" class="mt-3 p-3 bg-amber-50 border border-amber-100 rounded-xl hidden">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-xs font-extrabold text-amber-800 flex items-center gap-1">🍽️ 鎌倉四大風格午餐推薦</span>
+            <button id="toggleKamakuraFood" class="text-[10px] font-black bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full hover:bg-amber-300 transition-colors">顯示美食標點</button>
+          </div>
+          <p class="text-[11px] text-amber-700 leading-normal">手冊推薦：吻仔魚釜飯、キャラウェイ大盛咖哩、本格京風美水、文青風碎肉咖哩。</p>
+        </div>
+
+        <!-- 導航外連整合 -->
+        <div class="grid grid-cols-2 gap-2 mt-3">
+          <a id="googleRouteLink" class="text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white text-center py-3 rounded-xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-1.5" target="_blank" rel="noreferrer">
+            <span>🗺️</span> 依序導航路線
+          </a>
+          <a id="nearestRouteLink" class="text-xs font-bold bg-sky-50 text-sky-700 hover:bg-sky-100 text-center py-3 rounded-xl border border-sky-100 transition-all flex items-center justify-center gap-1.5" target="_blank" rel="noreferrer">
+            <span>🧭</span> 最近景點導航
+          </a>
+        </div>
+      </div>
+
+      <!-- 景點順序清單（極致設計感與順序號碼） -->
+      <div class="flex-1 p-4">
+        <h3 class="text-xs font-extrabold text-gray-400 tracking-wider uppercase mb-3 flex items-center gap-1.5">
+          <span>🚩</span> 當日停靠景點順序
+        </h3>
+        <div class="space-y-3" id="stopList">
+          <!-- 由 JS 自動產生 -->
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- 右側：地圖繪製與時間表雙視窗 -->
+    <main class="col-span-1 lg:col-span-8 flex flex-col h-full relative">
+      
+      <!-- 地圖容器 -->
+      <div class="flex-1 relative">
+        <div id="map" class="w-full h-full"></div>
+        
+        <!-- 地圖左下角資訊疊加層 -->
+        <div class="absolute bottom-4 left-4 z-[1000] bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-gray-100 max-w-[calc(100%-32px)]">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping"></span>
+            <span class="text-xs font-extrabold text-gray-800" id="mapCount">載入中...</span>
+          </div>
+          <p class="text-[10px] text-gray-500 leading-normal">
+            路線已根據<strong class="text-emerald-700">時間順序排序</strong>。地圖上的數字標點與連線指引了當天各個景點的移動先後方向。
+          </p>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- 底部：時間流與周邊卡片資訊（上下兩欄設計） -->
+  <footer class="bg-gray-100 border-t border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+      
+      <!-- 左：每日精細時間流程表 -->
+      <section class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+          <div>
+            <span class="text-[10px] font-extrabold tracking-wider text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md uppercase">Itinerary Timeline</span>
+            <h3 class="text-lg font-black text-gray-900 mt-1" id="timelineTitle">每日詳細行程表</h3>
+          </div>
+          <span class="text-xs text-gray-400 font-bold" id="timelineMeta">--</span>
+        </div>
+        <div class="max-h-[380px] overflow-y-auto pr-1 space-y-4" id="timelineRows">
+          <!-- 每日精細流線 -->
+        </div>
+      </section>
+
+      <!-- 右：精細卡片視角 -->
+      <section>
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <span class="text-[10px] font-extrabold tracking-wider text-sky-600 bg-sky-50 px-2 py-1 rounded-md uppercase">Location Cards</span>
+            <h3 class="text-lg font-black text-gray-900 mt-1">地點詳細導覽</h3>
+          </div>
+          <span class="text-xs text-gray-400 font-bold">可快速地圖定位</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1" id="placeCards">
+          <!-- 卡片內容 -->
+        </div>
+      </section>
+
+    </div>
+  </footer>
+
+  <!-- Leaflet 腳本導入 -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // 嚴格依據行程安排的時間點、先後順序，重新編排所有 days 的 places 順序
+    window.TRAVEL_DATA = {
+      days: [
+        {
+          id: "day-0622",
+          label: "6/22 (一)",
+          title: "成田山表參道",
+          meta: "起航：成田山老街文化散步，劃位 N'EX 前往新宿",
+          center: [35.7839, 140.3168],
+          zoom: 14,
+          routeMode: "walking",
+          places: [
+            { name: "成田機場 T2 入境", area: "成田", category: "交通", lat: 35.7730, lng: 140.3878, note: "星宇 JX800 12:55 抵達。京成站買地鐵券，JR 站購 Suica 與 N'EX。", time: "12:55 - 14:00" },
+            { name: "JR 成田站", area: "成田", category: "交通", lat: 35.7779, lng: 140.3137, note: "搭乘京成本線或 JR 成田線抵達市區，老街探訪的起點。", time: "14:15 - 14:30" },
+            { name: "成田山表參道", area: "成田", category: "老街", lat: 35.7839, lng: 140.3168, note: "慢步充滿江戶氛圍的表參道老街，享用極具名氣的鰻魚飯。", time: "14:30 - 16:45" },
+            { name: "成田山新勝寺", area: "成田", category: "神社寺院", lat: 35.7861, lng: 140.3183, note: "歷史悠久的新勝寺參拜。朱印帳蓋印建議於 16:00 前完成。", time: "14:30 - 16:45" },
+            { name: "返回成田機場 T2", area: "成田", category: "交通", lat: 35.7730, lng: 140.3878, note: "取回寄放的行李，準備持 N'EX 票券劃位乘車。", time: "17:00 - 17:30" },
+            { name: "新宿站西口 (小田急購票)", area: "新宿", category: "交通", lat: 35.6917, lng: 139.6997, note: "尋找小田急線售票機，預先購買 6/23 鎌倉周遊券。", time: "19:15 - 19:45" },
+            { name: "新宿王子大飯店", area: "新宿", category: "地標", lat: 35.6946, lng: 139.7011, note: "辦理 Check-in 入住手續。隨後可前往周邊超市進行晚餐與自由採購。", time: "20:00 - 20:30" }
+          ]
+        },
+        {
+          id: "day-0623",
+          label: "6/23 (二)",
+          title: "鎌倉と江の島",
+          meta: "經典湘南：灌籃高手平交道、紫陽花寺與江之電、夕陽江之島",
+          center: [35.3128, 139.5148],
+          zoom: 12,
+          routeMode: "walking",
+          places: [
+            { name: "新宿車站出發", area: "新宿", category: "交通", lat: 35.6895, lng: 139.6917, note: "搭乘小田急快速急行往藤澤。起步前可先於松屋享用早餐。", time: "06:10" },
+            { name: "小田急藤澤站", area: "藤澤", category: "交通", lat: 35.3389, lng: 139.4870, note: "步行 2 分鐘轉乘色彩迷人的復古「江之電」。", time: "07:15" },
+            { name: "鎌倉高校前站", area: "鎌倉", category: "拍照", lat: 35.3063, lng: 139.5006, note: "《灌籃高手》晴子與櫻木平交道經典鏡頭，清晨人潮稀少最宜留影。", time: "07:45" },
+            { name: "長谷寺", area: "鎌倉", category: "神社寺院", lat: 35.3127, lng: 139.5330, note: "6月紫陽花祭建議極早入場。漫步庭園與長谷觀音，視野可眺望海灣。", time: "08:30" },
+            { name: "鎌倉大佛 (高德院)", area: "鎌倉", category: "神社寺院", lat: 35.3168, lng: 139.5361, note: "從長谷寺步行約 7 分鐘，參觀鎌倉精神地標青銅大佛。", time: "09:45" },
+            { name: "鎌倉站東口 / 小町通", area: "鎌倉", category: "購物", lat: 35.3210, lng: 139.5517, note: "熱鬧的古都街道，是邊走邊吃（抹茶冰、咖哩麵包）的完美段落。", time: "10:45" },
+            { name: "鶴岡八幡宮", area: "鎌倉", category: "神社寺院", lat: 35.3260, lng: 139.5564, note: "鎌倉最重要的神社殿堂，宏偉莊嚴。參拜完可以稍微歇息。", time: "12:15" },
+            { name: "錢洗辨財天宇賀福神社", area: "鎌倉", category: "神社寺院", lat: 35.3257, lng: 139.5422, note: "特殊的泉水「洗錢」祈福傳統，希望財富翻倍（需要爬一段緩坡）。", time: "13:45" },
+            { name: "七里濱 (湘南海岸)", area: "鎌倉", category: "海岸", lat: 35.3078, lng: 139.5106, note: "下午茶時光！推薦前往 Bills 享用絕品舒芙蕾鬆餅或觀賞蔚藍海景。", time: "15:30" },
+            { name: "江之島 (青銅鳥居)", area: "藤澤", category: "海島", lat: 35.3012, lng: 139.4810, note: "漫步參道跨海大橋，探尋江島神社與老街，晚上在岸邊享用吻仔魚丼飯。", time: "17:00" },
+            { name: "藤澤站轉車", area: "藤澤", category: "交通", lat: 35.3389, lng: 139.4870, note: "搭乘湘南單軌電車或江之電返回藤澤站，隨後搭小田急電鐵返回新宿。", time: "19:00" },
+            { name: "回到新宿車站", area: "新宿", category: "交通", lat: 35.6895, lng: 139.6917, note: "大約 20:30 抵達新宿，可以根據體力在飯店附近享用消夜。", time: "20:30" }
+          ]
+        },
+        {
+          id: "day-0624",
+          label: "6/24 (三)",
+          title: "小江戶川越",
+          meta: "時空旅人：歷史佛寺巡禮、時之鐘聲與江戶藏造老街",
+          center: [35.9227, 139.4828],
+          zoom: 14,
+          routeMode: "walking",
+          places: [
+            { name: "西武新宿車站", area: "新宿", category: "交通", lat: 35.6946, lng: 139.7011, note: "早晨搭乘西武新宿線特急前往本川越，出發前先在吉野家吃早餐。", time: "07:35" },
+            { name: "本川越站", area: "川越", category: "交通", lat: 35.9142, lng: 139.4813, note: "抵達川越。出站步行約 15 分鐘前往古雅的佛寺區群。", time: "08:35" },
+            { name: "喜多院 & 成田山別院", area: "川越", category: "神社寺院", lat: 35.9197, lng: 139.4891, note: "喜多院參觀德川家光誕生間與栩栩如生的五百羅漢；隔壁別院可求交通安全。", time: "10:00 - 11:00" },
+            { name: "熊野神社 & 蓮馨寺", area: "川越", category: "神社寺院", lat: 35.9184, lng: 139.4836, note: "熊野神社可體驗腳底健康步道，蓮馨寺可撫摸「撫佛」祈求無病息災。", time: "11:15 - 11:45" },
+            { name: "大正浪漫夢通", area: "川越", category: "老街", lat: 35.9200, lng: 139.4835, note: "街道保存了昭和與大正時期的西式洋樓結構，氣氛幽雅。", time: "13:30 - 14:15" },
+            { name: "菓子屋橫丁", area: "川越", category: "美食", lat: 35.9234, lng: 139.4804, note: "滿滿古早童趣雜貨與柑仔店。必買巨大、超吸睛的「黑糖大棒（ふ菓子）」。", time: "14:15 - 15:00" },
+            { name: "時之鐘", area: "川越", category: "地標", lat: 35.9227, lng: 139.4828, note: "川越經典地標，每日 15:00 響鈴。在這裡合影並聆聽渾厚鐘聲。", time: "15:00" },
+            { name: "藏造老街 (一番街)", area: "川越", category: "老街", lat: 35.9238, lng: 139.4828, note: "江戶風黑漆厚實防禦性建築群，是了解川越防火歷史的主要區域。", time: "15:15 - 16:30" },
+            { name: "川越冰川神社", area: "川越", category: "神社寺院", lat: 35.9253, lng: 139.4891, note: "祈求緣分的古老神社。體驗「釣鯛魚神籤」，六月可見唯美風鈴裝飾。", time: "16:45 - 17:30" }
+          ]
+        },
+        {
+          id: "day-0625",
+          label: "6/25 (四)",
+          title: "柴又と谷中銀座",
+          meta: "東京下町味：寅次郎昭和故鄉、千本鳥居、落日夕陽階梯",
+          center: [35.7425, 139.8209],
+          zoom: 12,
+          routeMode: "walking",
+          places: [
+            { name: "京成上野站", area: "上野", category: "交通", lat: 35.7118, lng: 139.7738, note: "購買京成電鐵的「下町日和票」，一票無限暢玩懷舊地區。", time: "08:30" },
+            { name: "柴又站 (寅次郎像)", area: "柴又", category: "拍照", lat: 35.7569, lng: 139.8767, note: "一下車就會看見著名的「寅次郎」銅像，正式邁入懷舊的下町散步之旅。", time: "09:30 - 10:00" },
+            { name: "柴又老街與帝釋天 (題經寺)", area: "柴又", category: "神社寺院", lat: 35.7588, lng: 139.8794, note: "漫步參道吃草糰子、煎餅；到帝釋天欣賞精緻的木雕和邃溪園極致庭園。", time: "10:00 - 12:00" },
+            { name: "根津神社", area: "谷根千", category: "神社寺院", lat: 35.7202, lng: 139.7621, note: "搭京成線至日暮里轉往根津站。參拜江戶風大殿，走過紅綠相間的千本鳥居。", time: "14:15 - 15:30" },
+            { name: "谷中銀座老街", area: "谷中", category: "老街", lat: 35.7277, lng: 139.7667, note: "尋找老街屋頂的 7 隻木雕貓咪，品嚐貓尾甜甜圈、香脆炸肉餅，逛手作雜貨。", time: "15:45 - 18:00" },
+            { name: "夕陽階梯", area: "谷中", category: "拍照", lat: 35.7280, lng: 139.7675, note: "「夕やけだんだん」台階。在這裡看著溫暖的斜陽灑在老街上，安靜地收尾。", time: "18:00 - 18:30" }
+          ]
+        },
+        {
+          id: "day-0626",
+          label: "6/26 (五)",
+          title: "築地、淺草與晴空塔",
+          meta: "大都會暢玩：築地早茶、雷門江戶風物、極致高空晴空塔",
+          center: [35.6932, 139.7928],
+          zoom: 13,
+          routeMode: "walking",
+          places: [
+            { name: "築地場外市場", area: "築地", category: "美食", lat: 35.6655, lng: 139.7707, note: "品嚐現燒玉子燒、鮮甜海鮮丼。在人聲鼎沸中體驗日本的 Food Town 文化。", time: "08:00 - 10:15" },
+            { name: "烏森神社", area: "新橋", category: "神社寺院", lat: 35.6664, lng: 139.7584, note: "隱藏在新橋居酒屋小巷間的彩色神社，彩色朱印極有藝術特色。", time: "10:30 - 11:20" },
+            { name: "汐留日テレ大時計", area: "汐留", category: "地標", lat: 35.6642, lng: 139.7602, note: "12:00 前抵達日本電視台總部，親睹宮崎駿設計的大時鐘進行 3 分鐘精準動態報時。", time: "11:45 - 12:05" },
+            { name: "淺草雷門 & 仲見世通", area: "淺草", category: "神社寺院", lat: 35.7111, lng: 139.7966, note: "穿過巨大的雷門紅燈籠，逛歷史悠久的仲見世通，吃炸三明治與人形燒。", time: "12:45 - 14:15" },
+            { name: "淺草生活雜貨與懷舊街", area: "淺草", category: "購物", lat: 35.7128, lng: 139.7946, note: "よろし化粧堂挑選生日紀念護手霜、買花月堂限量菠蘿麵包，尋找狸貓商店街雕像。", time: "14:15 - 16:15" },
+            { name: "今戶神社", area: "淺草", category: "神社寺院", lat: 35.7208, lng: 139.8042, note: "招財貓起源地，參拜巨大的成雙成對招財貓，祈求好運和好人緣。", time: "16:30 - 17:30" },
+            { name: "東京晴空塔 (Skytree)", area: "押上", category: "地標", lat: 35.7101, lng: 139.8107, note: "登上展望台飽覽東京 360 度閃耀夜景，在 Solamachi 內挑選晚餐（如利久牛舌）。", time: "18:00 - 20:30" }
+          ]
+        },
+        {
+          id: "day-0627",
+          label: "6/27 (六)",
+          title: "原宿與東京鐵塔",
+          meta: "潮流與浪漫：明治神宮莊嚴古木、竹下通狂熱、東京鐵塔大絕景",
+          center: [35.6718, 139.7174],
+          zoom: 13,
+          routeMode: "walking",
+          places: [
+            { name: "明治神宮", area: "原宿", category: "神社寺院", lat: 35.6764, lng: 139.6993, note: "清晨漫步於都市森林中。穿過超巨大鳥居、觀賞酒樽牆，心靈沉靜下來。", time: "08:30 - 10:30" },
+            { name: "原宿竹下通", area: "原宿", category: "購物", lat: 35.6717, lng: 139.7030, note: "極具活力的次文化與彩虹棉花糖、超長可麗餅。體驗極限長度甜品！", time: "10:30 - 12:30" },
+            { name: "炸牛排 もと村 原宿店", area: "原宿", category: "美食", lat: 35.6705, lng: 139.7042, note: "超級排隊名店！在個人小石板上翻煎金黃酥脆的半熟炸牛排。", time: "12:30 - 14:00" },
+            { name: "原宿特色小巷散步", area: "原宿", category: "街區", lat: 35.6700, lng: 139.7058, note: "可選 mipig 迷你豬咖啡廳療癒一下，或在表參道及玩具名店 Kiddy Land 採購。", time: "14:00 - 16:00" },
+            { name: "增上寺", area: "芝公園", category: "神社寺院", lat: 35.6575, lng: 139.7483, note: "探尋德川將軍墓所、千躰子育地藏。此處有捕捉「增上寺古寺與東京鐵塔同框」的絕佳構圖。", time: "16:30 - 17:45" },
+            { name: "東京鐵塔", area: "芝公園", category: "地標", lat: 35.6586, lng: 139.7454, note: "登上 Main Deck 展望台，看東京車流化為金色暖流，東京的橙紅色象徵完美點亮。", time: "18:00 - 20:30" }
+          ]
+        },
+        {
+          id: "day-0628",
+          label: "6/28 (日)",
+          title: "豪德寺與阿美橫丁",
+          meta: "貓奴與血拼：滿山招福貓、昭和戰後和平資料館、上野狂熱購物",
+          center: [35.6965, 139.7291],
+          zoom: 12,
+          routeMode: "walking",
+          places: [
+            { name: "豪德寺", area: "世田谷", category: "神社寺院", lat: 35.6533, lng: 139.6470, note: "安靜住宅區內的福貓森林，成千上萬隻舉手貓咪雕像，拍照極具視覺張力。", time: "09:30 - 11:30" },
+            { name: "和平紀念展示資料館", area: "新宿", category: "博物館", lat: 35.6917, lng: 139.6925, note: "位於新宿住友大樓。展出大量戰後士兵復員與拘留歷史資料，具深刻教育意義。", time: "14:00 - 15:30" },
+            { name: "上野阿美橫丁", area: "上野", category: "購物", lat: 35.7099, lng: 139.7746, note: "藥妝血拼、志村商店瘋狂零食特賣、買伴手禮的二木菓子與肉的大山炸肉餅。", time: "16:30 - 18:30" },
+            { name: "上野周邊晚餐", area: "上野", category: "美食", lat: 35.7112, lng: 139.7730, note: "伊豆榮鰻魚老舖，或著名高 CP 值的名代宇奈透平價鰻魚飯，體驗居酒屋夜生活。", time: "18:30 - 20:30" }
+          ]
+        },
+        {
+          id: "day-0629",
+          label: "6/29 (一)",
+          title: "靖國神社與歸途",
+          meta: "最後巡禮：近代歷史遊就館、結緣大神社、新宿 N'EX 完美回國",
+          center: [35.6960, 139.7451],
+          zoom: 13,
+          routeMode: "walking",
+          places: [
+            { name: "靖國神社", area: "九段下", category: "神社寺院", lat: 35.6940, lng: 139.7432, note: "參拜巨大的青銅大鳥居、大村益次郎雕像，東京著名櫻花基準樹所在地。", time: "08:30 - 09:15" },
+            { name: "遊就館", area: "九段下", category: "博物館", lat: 35.6947, lng: 139.7432, note: "位於神社境內。可近距離親炙真實的零式戰機、泰緬鐵道蒸汽火車。文物非常精美。", time: "09:15 - 11:00" },
+            { name: "東京大神宮", area: "飯田橋", category: "神社寺院", lat: 35.7000, lng: 139.7464, note: "東京最著名的結緣戀愛神社，求籤詩與守護符非常靈驗精美。", time: "11:15 - 11:45" },
+            { name: "新宿站 (N'EX 劃位出發)", area: "新宿", category: "交通", lat: 35.6895, lng: 139.6917, note: "在新宿站集合上車，搭乘快速舒適的成田特快前往機場，路上可快速午餐。", time: "13:00 - 14:20" },
+            { name: "成田機場 T2", area: "成田", category: "交通", lat: 35.7730, lng: 140.3878, note: "14:20 抵達辦理星宇航空託運，通過海關，在免稅店進行最終伴手禮採購！", time: "14:20 - 16:20" }
+          ]
+        }
+      ],
+      
+      // 鎌倉四大美食點 (將於點選 6/23 且開啟切換時，注入地圖中)
+      kamakuraFood: [
+        { name: "かまかま 本店 (釜飯)", area: "鎌倉", category: "美食", lat: 35.3225, lng: 139.5528, note: "鎌倉最經典的吻仔魚釜飯！點點現炊，一飯三吃（配藥味與高湯茶泡飯）。", time: "午餐推薦" },
+        { name: "Caraway 咖哩", area: "鎌倉", category: "美食", lat: 35.3216, lng: 139.5526, note: "老字號濃郁香醇日式咖哩，分量驚人！價格實惠，是排隊神店。", time: "午餐推薦" },
+        { name: "鎌倉 美水 (烏龍麵)", area: "鎌倉", category: "美食", lat: 35.3212, lng: 139.5519, note: "本格京風高湯烏龍麵與酥脆天婦羅定食。出餐速度極快，翻桌率高，對親子友善。", time: "午餐推薦" },
+        { name: "OXYMORON Komachi", area: "鎌倉", category: "美食", lat: 35.3228, lng: 139.5532, note: "文青最愛綠香草碎肉咖哩，精緻視覺兼具。餐後必吃招牌法式硬布丁！", time: "午餐推薦" }
+      ],
+      
+      itineraries: {
+        "day-0622": [
+          { time: "04:30 - 04:45", spot: "台灣童綜合停車場集合", note: "預計 1.5 - 2 小時抵達桃園機場 T1。時間可以再提早。" },
+          { time: "06:30 - 08:30", spot: "桃園機場 (TPE) T1 報到", note: "辦理星宇航空行李託運、安檢與出境手續。" },
+          { time: "08:30 - 12:55", spot: "飛行時間 (JX800)", note: "前往東京成田國際機場 (NRT)。" },
+          { time: "12:55 - 14:00", spot: "成田機場 T2 入境", note: "包含海關審查、領行李、將行李寄放在機場置物櫃。京成站購買 Tokyo subway Ticket 72hr，JR 站購買 Suica 和 N’EX。" },
+          { time: "14:15 - 14:30", spot: "前往成田市區", note: "搭乘「京成本線」或「JR 成田線」至成田站。" },
+          { time: "14:30 - 16:45", spot: "成田山表參道與新勝寺", note: "漫步古街、參拜，並品嚐著名的鰻魚飯。朱印帳（16:00 前），店家在 17:00 陸續關門。" },
+          { time: "17:00 - 17:30", spot: "返回成田機場 T2", note: "搭車回機場站，取回寄放的行李。" },
+          { time: "17:48 - 19:10", spot: "搭乘 N'EX 42 特急", note: "持 N'EX 票券劃位，搭車前往「新宿站」。" },
+          { time: "19:15 - 19:45", spot: "新宿站西口購票", note: "尋找小田急線售票機購買 6/23「鎌倉周遊券」，並規劃 6/24 Kawagoe Access Ticket。" },
+          { time: "20:00 - 20:30", spot: "前往新宿王子大飯店 Check-in", note: "步行前往飯店辦理入住。" },
+          { time: "20:30 ~", spot: "晚餐與自由活動", note: "附近超市與便利商店採買夜宵。" }
+        ],
+        "day-0623": [
+          { time: "06:10", spot: "新宿車站出發", note: "5:00 提前早餐（Matsuya 松屋 24hr）；搭乘「小田急快速急行」往藤澤方向。" },
+          { time: "07:15", spot: "抵達小田急藤澤站", note: "步行 2 分鐘轉乘江之電 (Enoden)。" },
+          { time: "07:25", spot: "藤澤站搭乘江之電", note: "此時段遊客較少，直接坐往鎌倉高校前，沿途看海岸線。" },
+          { time: "07:45", spot: "鎌倉高校前站", note: "重點拍照：《灌籃高手》經典晴小平交道。清晨人潮最少，最好取景。" },
+          { time: "08:15", spot: "搭乘江之電往長谷", note: "由鎌倉高校前站搭往長谷方向。" },
+          { time: "08:30", spot: "長谷寺", note: "6 月紫陽花季建議盡早進場，觀賞壯觀的長谷觀音和繁花。" },
+          { time: "09:45", spot: "鎌倉大佛 (高德院)", note: "從長谷寺步行約 7 分鐘即可到達，參觀巨大青銅露天大佛。" },
+          { time: "10:45", spot: "小町通商店街 / 鎌倉站", note: "邊走邊吃時間。推薦抹茶冰淇淋、大佛雕刻雞蛋糕與咖哩麵包。" },
+          { time: "12:15", spot: "鶴岡八幡宮", note: "鎌倉最重要的核心神社，參拜後稍作休息。可在此時段享用手冊推薦的四大午餐！" },
+          { time: "13:45", spot: "錢洗辨財天宇賀福神社", note: "體驗特別的洗錢祈福文化，用竹簍洗淨硬幣（需步行一段上坡路）。" },
+          { time: "15:30", spot: "七里濱 (湘南海岸)", note: "在 Bills 享用著名的奶油炒蛋、下午茶香蕉鬆餅，或去和田塚站的甘味處無心庵。" },
+          { time: "17:00", spot: "江之島 (Enoshima)", note: "通過青銅鳥居，參拜江之島神社三宮。晚餐推薦美味的吻仔魚丼，體驗湘南單軌電車。" },
+          { time: "19:00", spot: "賦歸", note: "從江之島搭巴士或步行回「藤澤站」，轉乘小田急回新宿。" },
+          { time: "20:30", spot: "回到新宿車站", note: "結束湘南一日遊，回飯店休息。" }
+        ],
+        "day-0624": [
+          { time: "07:35", spot: "西武新宿車站出發", note: "提前出發早餐 6:00，Yoshinoya 吉野家解決。" },
+          { time: "08:35", spot: "抵達本川越站", note: "出站後步行約 15 分鐘前往古剎寺院區。" },
+          { time: "10:00 - 11:00", spot: "喜多院 & 成田山川越別院", note: "喜多院：參觀德川家光誕生間、五百羅漢；成田山：色彩鮮豔，祈求行車安全。" },
+          { time: "11:15 - 11:45", spot: "熊野神社 & 蓮馨寺", note: "熊野神社：體驗腳底按摩健康步道、洗錢弁財天。蓮馨寺：觸摸「撫佛」身體健康。" },
+          { time: "12:00 - 13:30", spot: "川越午餐時間", note: "推薦：名產鰻魚飯（如：小川菊、林屋）或地瓜懷石精緻料理。" },
+          { time: "13:30 - 14:15", spot: "大正浪漫夢通", note: "欣賞昭和與大正風格混合的洋房建築，氛圍精緻靜謐。" },
+          { time: "14:15 - 15:00", spot: "菓子屋橫丁", note: "購買古早味零食，必買特色：超長「黑糖麩菓子」棒。" },
+          { time: "15:00", spot: "時之鐘 (川越地標)", note: "準時聽鐘聲（每日 15:00 響鈴），川越最具代表性的古風象徵。" },
+          { time: "15:15 - 16:30", spot: "藏造老街 (一番街)", note: "逛百年黑瓦黑漆牆建築、特色店鋪，觀察獨特的防火厚牆構造。" },
+          { time: "16:45 - 17:30", spot: "川越冰川神社", note: "體驗「釣鯛魚籤詩」，祈求好緣。6 月底可留意夏季紙風鈴祭。" }
+        ],
+        "day-0625": [
+          { time: "08:30", spot: "京成上野站", note: "購買「下町日和票」（大人 510 日圓 / 小孩 260 日圓）。" },
+          { time: "09:30 - 10:00", spot: "抵達柴又站", note: "合照「寅次郎像」，開始昭和懷舊之旅。" },
+          { time: "10:00 - 12:00", spot: "柴又老街與帝釋天", note: "柴又帝釋天：看木雕與「邃溪園」庭園。老街小吃：高木屋、とらや（草糰子）、い志ゐ（炙燒物）。" },
+          { time: "12:00 - 13:30", spot: "柴又午餐與午茶", note: "午餐：ゑびす家（經典鰻魚、川魚料理）。點心：船橋屋（葛餅）或 昭和復古喫茶セピア。" },
+          { time: "14:15 - 15:30", spot: "根津神社參拜", note: "搭乘京成線至日暮里轉乘至「根津站」。參拜絕美的「千本鳥居」與江戶朱紅風格本殿。" },
+          { time: "15:45 - 18:00", spot: "谷中銀座老街散策", note: "尋寶：找「7隻木刻貓」、逛 谷中松野屋。點心：貓尾甜甜圈、谷中脆皮炸肉餅。" },
+          { time: "18:00 - 18:30", spot: "夕陽階梯 (夕やけだんだん)", note: "在知名的夕陽台階欣賞老街金黃色落日餘暉，下町行程畫下句點。" },
+          { time: "18:30 ~", spot: "晚餐後回新宿飯店", note: "從 JR 日暮里站直達回新宿王子大飯店。" }
+        ],
+        "day-0626": [
+          { time: "08:00 - 10:15", spot: "築地場外市場", note: "享用大份量海鮮丼或現做玉子燒。建議 10:15 前離開，前往新橋。" },
+          { time: "10:30 - 11:20", spot: "烏森神社", note: "位於新橋站旁巷弄，以繽紛的四色御朱印和鳥居聞名，求職與除厄運極佳。" },
+          { time: "11:45 - 12:05", spot: "汐留日本電視台大時計", note: "抵達汐留日本電視台，觀看 12:00 的宮崎駿設計手工時鐘整點演出（約 3 分鐘）。" },
+          { time: "12:15 - 12:45", spot: "前往淺草", note: "從「汐留站」搭乘都營大江戶線至「大門站」，轉淺草線直達「淺草站」。" },
+          { time: "12:45 - 14:15", spot: "淺草寺周邊與午餐", note: "雷門、仲見世通拍經典合照。享用淺草炸肉餅與 Age.3 ASAKUSA 炸三明治。" },
+          { time: "14:15 - 16:15", spot: "生活雜貨與懷舊街散策", note: "よろし化粧堂：挑選 365 生日護手霜。花月堂：買極酥脆菠蘿麵包。狸貓商店街：尋找狸貓雕像。" },
+          { time: "16:30 - 17:30", spot: "今戶神社", note: "拜訪招財貓發源地，拍巨大的招財貓石雕，祈求財運與人際關係順遂。" },
+          { time: "18:00 - 20:30", spot: "東京晴空塔 (Skytree)", note: "登高 350M 俯瞰東京震撼夜景。在 Solamachi 商場內挑選晚餐（如利久牛舌或炸豬排）。" }
+        ],
+        "day-0627": [
+          { time: "08:30 - 10:30", spot: "明治神宮", note: "必去大鳥居、清正井、酒樽牆。東京市中心最大的綠地，感受莊嚴肅穆氣氛。" },
+          { time: "10:30 - 12:30", spot: "原宿 & 竹下通", note: "觀光：Cute Cube、SoLaDo 竹下通、大創。必吃：可麗餅、巨大棉花糖、超長美食。" },
+          { time: "12:30 - 14:00", spot: "原宿午餐 (炸牛排もと村)", note: "必吃：牛かつもと村 (炸牛排) 原宿店。體驗表參道與竹下通交界處的時尚能量。" },
+          { time: "14:00 - 16:00", spot: "原宿特色小巷探秘", note: "體驗：mipig cafe (迷你豬) 或 忍者修行。購物：表參道精品街、Kiddy Land 玩具旗艦店。" },
+          { time: "16:30 - 17:45", spot: "增上寺參拜", note: "必去：三解脫門、德川家靈廟、千躰子育地藏。捕捉「增上寺大殿與東京鐵塔同框」的經典視角。" },
+          { time: "18:00 - 20:30", spot: "東京鐵塔", note: "必去 Main Deck 展望台、Foot Town 商店街。欣賞東京鐵塔點燈後的標誌性橘紅光芒。" },
+          { time: "20:30 ~", spot: "晚餐與回程", note: "建議：鐵塔周邊居酒屋，或回到新宿飯店區享用深夜拉麵食宿。" }
+        ],
+        "day-0628": [
+          { time: "09:30 - 11:30", spot: "豪德寺 (世田谷)", note: "必去：招福殿（上千隻招福貓）、三重塔。滿山小貓雕像，非常療癒，請安靜參觀。" },
+          { time: "11:30 - 13:00", spot: "豪德寺/新宿午餐", note: "必吃：墨繪 (面包餐廳) 或在豪德寺車站周邊享用家庭式日式料理。" },
+          { time: "14:00 - 15:30", spot: "和平紀念展示資料館", note: "地點：新宿住友大樓內。了解戰後士兵與遣返者的歷史，展覽非常精緻教育意義深厚。" },
+          { time: "16:30 - 18:30", spot: "上野阿美橫丁", note: "觀光：志村商店零食特賣、摩利支天德大寺。必吃：肉的大山炸肉餅、鐵火丼、二木的菓子伴手禮。" },
+          { time: "18:30 - 20:30", spot: "上野周邊晚餐", note: "可選老牌「伊豆榮」鰻魚飯或「名代宇奈透」平價鰻魚飯；感受上野夜晚充滿活力的居酒屋氛圍。" },
+          { time: "20:30 ~", spot: "歸返新宿", note: "從上野搭乘 JR 山手線或地鐵大江戶線回到新宿王子大飯店。" }
+        ],
+        "day-0629": [
+          { time: "08:30 - 09:15", spot: "靖國神社", note: "必去大鳥居、大村益次郎銅像、拜殿。東京著名歷史標記與櫻花氣象指標基準樹。" },
+          { time: "09:15 - 11:00", spot: "遊就館", note: "必看：零式戰鬥機、泰緬鐵道蒸氣火車。展出大量珍貴近代歷史與軍事文化展品。" },
+          { time: "11:15 - 11:45", spot: "東京大神宮", note: "必去本殿、抽各式精緻御守。以祈求姻緣與好人際關係靈驗著稱。" },
+          { time: "11:45 - 12:30", spot: "午餐與前往新宿", note: "建議在飯田橋附近快速午餐，隨後趕往新宿站攜帶大件行李。" },
+          { time: "13:00 - 14:20", spot: "搭乘 N'EX 特急前往機場", note: "起訖：新宿站 → 成田機場第 2 航廈。務必持 N'EX 票券提早完成回程劃位。" },
+          { time: "14:20 - 16:20", spot: "成田機場第2航廈報到", note: "辦理星宇航空行李託運、通過安檢與移民局、在免稅店進行最後採購。" },
+          { time: "16:20 - 19:00", spot: "飛行時間 (JX801/803)", note: "搭乘舒適星宇航空返回桃園國際機場 (TPE) 第 1 航廈。" },
+          { time: "19:30 - 21:00", spot: "回程與停車場", note: "機場取車後，由桃園機場開車返回台灣童綜合停車場，平安完成東京進香團之旅！" }
+        ]
+      }
+    };
+
+    const data = window.TRAVEL_DATA;
+    let selectedDay = data.days[0];
+    let selectedCategory = "全部";
+    let searchTerm = "";
+    let userPosition = null;
+    let showKamakuraFood = false; // 6/23 美食推薦開關
+
+    let map;
+    let placeLayer;
+    let routeLayer;
+    let userLayer;
+    let foodLayer; // 特殊美食標點圖層
+
+    const $ = (id) => document.getElementById(id);
+
+    // 每一種類別對應的優雅主題色系
+    const categoryColors = {
+      "神社寺院": "#10b981", // 綠色
+      "購物": "#f59e0b",     // 琥珀色
+      "美食": "#ef4444",     // 紅色
+      "老街": "#8b5cf6",     // 紫色
+      "地標": "#3b82f6",     // 藍色
+      "交通": "#4b5563",     // 深灰
+      "海岸": "#06b6d4",     // 青色
+      "海島": "#14b8a6",     // 藍綠色
+      "拍照": "#ec4899",     // 粉色
+      "街區": "#6366f1",     // 靛藍
+      "博物館": "#6b7280"     // 灰色
+    };
+
+    function init() {
+      renderDateTabs();
+      initMap();
+      bindEvents();
+      requestLocation();
+      render();
+    }
+
+    function initMap() {
+      // 預設中心點設為第一個行程的中心
+      map = L.map("map", { zoomControl: false }).setView(selectedDay.center, selectedDay.zoom);
+      
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+      
+      // 使用更清晰美觀的 OpenStreetMap
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "東京進香團導航系統 © OpenStreetMap"
+      }).addTo(map);
+
+      placeLayer = L.layerGroup().addTo(map);
+      routeLayer = L.layerGroup().addTo(map);
+      userLayer = L.layerGroup().addTo(map);
+      foodLayer = L.layerGroup().addTo(map);
+    }
+
+    function bindEvents() {
+      $("locateBtn").addEventListener("click", requestLocation);
+      
+      $("searchInput").addEventListener("input", (event) => {
+        searchTerm = event.target.value.trim().toLowerCase();
+        render();
+      });
+
+      // 6/23 鎌倉特殊美食推薦標記切換
+      $("toggleKamakuraFood").addEventListener("click", () => {
+        showKamakuraFood = !showKamakuraFood;
+        if (showKamakuraFood) {
+          $("toggleKamakuraFood").textContent = "隱藏美食標點";
+          $("toggleKamakuraFood").classList.replace("bg-amber-200", "bg-amber-600");
+          $("toggleKamakuraFood").classList.replace("text-amber-900", "text-white");
+        } else {
+          $("toggleKamakuraFood").textContent = "顯示美食標點";
+          $("toggleKamakuraFood").classList.replace("bg-amber-600", "bg-amber-200");
+          $("toggleKamakuraFood").classList.replace("text-white", "text-amber-900");
+        }
+        render();
+      });
+    }
+
+    function renderDateTabs() {
+      $("dateTabs").innerHTML = data.days.map((day) => `
+        <button class="date-tab px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm whitespace-nowrap transition-all border ${
+          day.id === selectedDay.id 
+            ? "bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-600/10 scale-105" 
+            : "bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+        }" data-day="${day.id}" type="button">
+          ${day.label} · ${day.title}
+        </button>
+      `).join("");
+
+      document.querySelectorAll(".date-tab").forEach((button) => {
+        button.addEventListener("click", () => {
+          selectedDay = data.days.find((day) => day.id === button.dataset.day);
+          selectedCategory = "全部";
+          searchTerm = "";
+          showKamakuraFood = false; // 切換天數重設美食
+          
+          // 狀態控制
+          $("searchInput").value = "";
+          $("toggleKamakuraFood").textContent = "顯示美食標點";
+          $("toggleKamakuraFood").className = "text-[10px] font-black bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full hover:bg-amber-300 transition-colors";
+
+          // 鎌倉美食看板顯示邏輯
+          if (selectedDay.id === "day-0623") {
+            $("kamakuraFoodPanel").classList.remove("hidden");
+          } else {
+            $("kamakuraFoodPanel").classList.add("hidden");
+          }
+
+          renderDateTabs();
+          render();
+          
+          // 將視野重設為當天景點的中心點
+          map.setView(selectedDay.center, selectedDay.zoom);
+        });
+      });
+    }
+
+    function render() {
+      $("dayTitle").textContent = `${selectedDay.label} ${selectedDay.title}`;
+      $("dayMeta").textContent = selectedDay.meta;
+      
+      renderCategoryFilters();
+      const places = filteredPlaces();
+      
+      renderMap(places);
+      renderStops(places);
+      renderCards(places);
+      renderTimeline();
+      updateRouteLinks(places);
+      
+      let countText = `${places.length} 個行程停靠點`;
+      if (selectedDay.id === "day-0623" && showKamakuraFood) {
+        countText += ` + 4 個美食推薦點`;
+      }
+      $("mapCount").textContent = countText;
+    }
+
+    function categories() {
+      // 動態彙整當天的類別
+      return ["全部", ...new Set(selectedDay.places.map((place) => place.category))];
+    }
+
+    function renderCategoryFilters() {
+      $("categoryFilters").innerHTML = categories().map((category) => `
+        <button type="button" class="chip px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all ${
+          category === selectedCategory 
+            ? "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm" 
+            : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+        }" data-category="${category}">
+          ${category}
+        </button>
+      `).join("");
+
+      document.querySelectorAll(".chip").forEach((button) => {
+        button.addEventListener("click", () => {
+          selectedCategory = button.dataset.category;
+          render();
+        });
+      });
+    }
+
+    function filteredPlaces() {
+      return selectedDay.places.filter((place) => {
+        const matchCategory = selectedCategory === "全部" || place.category === selectedCategory;
+        const text = `${place.name} ${place.area} ${place.category} ${place.note} ${place.time}`.toLowerCase();
+        return matchCategory && (!searchTerm || text.includes(searchTerm));
+      });
+    }
+
+    // 順序標記 HTML（美化版，包含序列號與時間字串）
+    function markerHtml(place, index, isFood = false) {
+      const color = isFood ? "#d97706" : (categoryColors[place.category] || "#10b981");
+      const numOrIcon = isFood ? "🍛" : (index + 1);
+      return `
+        <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
+          <!-- 泡泡型順序編號 -->
+          <div style="width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: ${color}; color: white; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.15); font-weight: 800; font-size: 13px;">
+            ${numOrIcon}
+          </div>
+          <!-- 小箭頭下標 -->
+          <div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid ${color}; margin-top: -1px;"></div>
+        </div>
+      `;
+    }
+
+    function renderMap(places) {
+      placeLayer.clearLayers();
+      routeLayer.clearLayers();
+      foodLayer.clearLayers();
+
+      const bounds = [];
+      
+      // 1. 繪製並標記標準行程景點 (嚴格按照陣列中的時間順序)
+      places.forEach((place, index) => {
+        const marker = L.marker([place.lat, place.lng], {
+          icon: L.divIcon({ className: "", html: markerHtml(place, index), iconSize: [32, 40], iconAnchor: [16, 40] })
+        }).addTo(placeLayer);
+
+        marker.bindPopup(`
+          <div style="font-family: sans-serif; line-height: 1.4; max-width: 220px;">
+            <div style="display: flex; items-center; justify-content: space-between; margin-bottom: 4px;">
+              <span style="background: #e0f2fe; color: #0369a1; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px;">第 ${index + 1} 站</span>
+              <strong style="color: #047857; font-size: 11px;">⏱️ ${place.time}</strong>
+            </div>
+            <strong style="font-size: 14px; color: #111827; display: block; margin-top: 4px;">${place.name}</strong>
+            <span style="color: #6b7280; font-size: 11px;">${place.area} · ${place.category}</span>
+            <p style="color: #374151; font-size: 11.5px; margin: 6px 0; padding-top: 4px; border-top: 1px solid #f3f4f6;">${place.note}</p>
+            <a target="_blank" rel="noreferrer" href="${googleMapsPlaceUrl(place)}" style="display: block; text-align: center; background: #059669; color: white; border-radius: 6px; text-decoration: none; padding: 6px 8px; font-size: 11px; font-weight: bold; margin-top: 6px;">
+              Google 導航此站
+            </a>
+          </div>
+        `);
+        bounds.push([place.lat, place.lng]);
+      });
+
+      // 2. 繪製動態流光虛線路徑 (連接順序 1 -> 2 -> 3)
+      if (places.length > 1) {
+        const latlngs = places.map((place) => [place.lat, place.lng]);
+        L.polyline(latlngs, {
+          color: "#10b981", // 主題綠色
+          weight: 4,
+          opacity: 0.85,
+        }).addTo(routeLayer);
+      }
+
+      // 3. 特殊處理：6/23 顯示四大午餐美食推薦
+      if (selectedDay.id === "day-0623" && showKamakuraFood) {
+        data.kamakuraFood.forEach((food) => {
+          const foodMarker = L.marker([food.lat, food.lng], {
+            icon: L.divIcon({ className: "", html: markerHtml(food, 0, true), iconSize: [32, 40], iconAnchor: [16, 40] })
+          }).addTo(foodLayer);
+
+          foodMarker.bindPopup(`
+            <div style="font-family: sans-serif; line-height: 1.4; max-width: 200px;">
+              <span style="background: #fef3c7; color: #92400e; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px;">🍽️ 鎌倉美食推薦</span>
+              <strong style="font-size: 14px; color: #111827; display: block; margin-top: 4px;">${food.name}</strong>
+              <p style="color: #374151; font-size: 11.5px; margin: 4px 0;">${food.note}</p>
+              <a target="_blank" rel="noreferrer" href="${googleMapsPlaceUrl(food)}" style="display: block; text-align: center; background: #d97706; color: white; border-radius: 6px; text-decoration: none; padding: 5px 8px; font-size: 11px; font-weight: bold; margin-top: 4px;">
+                地圖導航名店
+              </a>
+            </div>
+          `);
+          bounds.push([food.lat, food.lng]);
+        });
+      }
+
+      // 4. 定位處理
+      if (userPosition) bounds.push([userPosition.lat, userPosition.lng]);
+      if (bounds.length) {
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: selectedDay.zoom });
+      } else {
+        map.setView(selectedDay.center, selectedDay.zoom);
+      }
+    }
+
+    // 渲染停靠景點卡片（左側）
+    function renderStops(places) {
+      if (!places.length) {
+        $("stopList").innerHTML = `
+          <div class="text-center py-8 px-4 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50">
+            <span class="text-3xl">🧩</span>
+            <strong class="block text-gray-700 text-sm mt-2">查無景點項目</strong>
+            <span class="text-xs text-gray-400 block mt-1">試著切換過濾器或重新輸入搜尋字詞</span>
+          </div>
+        `;
+        return;
+      }
+
+      $("stopList").innerHTML = places.map((place, index) => {
+        const color = categoryColors[place.category] || "#10b981";
+        return `
+          <div class="group flex items-start gap-3 p-3 bg-white border border-gray-100 rounded-xl hover:border-gray-200 hover:shadow-sm cursor-pointer transition-all" onclick="focusOnMap(${place.lat}, ${place.lng}, 16)">
+            <!-- 序號泡泡 -->
+            <div class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-xs text-white" style="background: ${color};">
+              ${index + 1}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-1.5">
+                <h4 class="font-bold text-xs text-gray-900 group-hover:text-emerald-700 transition-colors truncate">${place.name}</h4>
+                <span class="text-[10px] text-gray-400 font-extrabold flex-shrink-0 bg-gray-100 px-1.5 py-0.5 rounded">${place.time}</span>
+              </div>
+              <p class="text-[10px] text-gray-500 mt-1 line-clamp-1">${place.note}</p>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // 輔助函式：點擊景點卡片，地圖視角平滑位移至目標點
+    window.focusOnMap = function(lat, lng, zoomLevel = 17) {
+      map.setView([lat, lng], zoomLevel);
+      // 移動至頂端
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    // 渲染右下角景點導覽卡片
+    function renderCards(places) {
+      if (!places.length) {
+        $("placeCards").innerHTML = `
+          <div class="col-span-full py-8 text-center text-gray-400 text-xs">
+            目前過濾條件下無景點導覽卡片。
+          </div>
+        `;
+        return;
+      }
+
+      $("placeCards").innerHTML = places.map((place, index) => {
+        const color = categoryColors[place.category] || "#10b981";
+        return `
+          <article class="bg-white border border-gray-100 hover:border-gray-200 rounded-2xl shadow-sm hover:shadow p-4 flex flex-col justify-between transition-all">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-[10px] font-extrabold text-white px-2 py-0.5 rounded-md" style="background: ${color};">
+                  ${place.category}
+                </span>
+                <span class="text-xs text-gray-400 font-extrabold">第 ${index + 1} 站 · ${place.time}</span>
+              </div>
+              <h3 class="font-black text-gray-900 text-sm mb-1.5">${place.name}</h3>
+              <p class="text-xs text-gray-500 leading-relaxed mb-4">${place.note}</p>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">
+              <button onclick="focusOnMap(${place.lat}, ${place.lng}, 17)" class="text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 py-2 rounded-xl transition-all text-center">
+                地圖定位
+              </button>
+              <a target="_blank" rel="noreferrer" href="${googleMapsPlaceUrl(place)}" class="text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 py-2 rounded-xl transition-all text-center">
+                開啟導航
+              </a>
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    // 渲染下方的時間線流程圖 (最細部時間表)
+    function renderTimeline() {
+      const timeline = data.itineraries?.[selectedDay.id] || [];
+      $("timelineTitle").textContent = `${selectedDay.label} · 行程詳細時間表`;
+      $("timelineMeta").textContent = timeline.length ? `${timeline.length} 個行程節點` : "未設定流程";
+
+      if (!timeline.length) {
+        $("timelineRows").innerHTML = `
+          <div class="text-center py-6 text-gray-400 text-xs">
+            本日期無精細時間流程表。
+          </div>
+        `;
+        return;
+      }
+
+      $("timelineRows").innerHTML = timeline.map((item) => `
+        <article class="flex items-start gap-4">
+          <!-- 時間與原點 -->
+          <div class="flex flex-col items-center">
+            <span class="text-xs font-extrabold text-emerald-600 bg-emerald-50 border border-emerald-200/50 px-2 py-1 rounded-md whitespace-nowrap">
+              ${item.time}
+            </span>
+            <div class="w-0.5 h-full bg-emerald-100 min-h-[30px] my-1"></div>
+          </div>
+          <!-- 詳細內容 -->
+          <div class="bg-gray-50/50 hover:bg-gray-50 border border-gray-100 rounded-xl p-3 flex-1 transition-colors">
+            <h4 class="font-black text-gray-900 text-xs md:text-sm">${item.spot}</h4>
+            <p class="text-[11px] md:text-xs text-gray-500 mt-1 leading-relaxed">${item.note}</p>
+          </div>
+        </article>
+      `).join("");
+    }
+
+    function updateRouteLinks(places) {
+      $("googleRouteLink").href = googleMapsRouteUrl(places);
+      const nearest = nearestPlace(places);
+      $("nearestRouteLink").href = nearest ? googleMapsPlaceUrl(nearest) : googleMapsRouteUrl(places);
+      $("nearestRouteLink").textContent = nearest ? `導航至最近站：${nearest.name}` : "導航到最近景點";
+    }
+
+    // 地理定位處理
+    function requestLocation() {
+      if (!navigator.geolocation) {
+        $("locationStatus").innerHTML = `<span class="w-2 h-2 rounded-full bg-red-400"></span> 瀏覽器不支援定位`;
+        return;
+      }
+      $("locationStatus").innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> 正在定位中...`;
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          userPosition = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          $("locationStatus").innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 本地位置已同步`;
+          drawUserPosition();
+          render();
+        },
+        () => {
+          $("locationStatus").innerHTML = `<span class="w-2 h-2 rounded-full bg-gray-300"></span> 定位授權未開啟`;
+          drawUserPosition();
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+      );
+    }
+
+    function drawUserPosition() {
+      userLayer.clearLayers();
+      if (!userPosition) return;
+      L.marker([userPosition.lat, userPosition.lng], {
+        icon: L.divIcon({ className: "", html: "<div class='user-marker-pulse'></div>", iconSize: [14, 14], iconAnchor: [7, 7] })
+      }).addTo(userLayer).bindPopup("<b>這是你的目前位置</b><br>系統將以此計算最近的景點。");
+    }
+
+    // 計算距離最近的景點
+    function nearestPlace(places) {
+      if (!userPosition || !places.length) return null;
+      return [...places].sort((a, b) => distance(userPosition, a) - distance(userPosition, b))[0];
+    }
+
+    // 哈維辛公式（計算經緯度距離公里數）
+    function distance(a, b) {
+      const rad = Math.PI / 180;
+      const lat1 = a.lat * rad;
+      const lat2 = b.lat * rad;
+      const dLat = (b.lat - a.lat) * rad;
+      const dLng = (b.lng - a.lng) * rad;
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+      return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    }
+
+    // 生成單一景點導航網址
+    function googleMapsPlaceUrl(place) {
+      const origin = userPosition ? `&origin=${userPosition.lat},${userPosition.lng}` : "";
+      return `https://www.google.com/maps/dir/?api=1${origin}&destination=${place.lat},${place.lng}&travelmode=${selectedDay.routeMode}`;
+    }
+
+    // 生成全天多點依序連貫導航網址 (精華，依陣列時間順序)
+    function googleMapsRouteUrl(places) {
+      if (!places.length) return "https://www.google.com/maps";
+      const origin = userPosition ? `${userPosition.lat},${userPosition.lng}` : `${places[0].lat},${places[0].lng}`;
+      const destination = places[places.length - 1];
+      const waypoints = places.slice(0, -1).map((place) => `${place.lat},${place.lng}`).join("|");
+      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination.lat},${destination.lng}&waypoints=${encodeURIComponent(waypoints)}&travelmode=${selectedDay.routeMode}`;
+    }
+
+    window.onload = function() {
+      init();
+    };
+  </script>
+</body>
+</html>
